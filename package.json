@@ -1,0 +1,7 @@
+{
+  "name": "rugplay-cli",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": { "rugplay": "./index.js" },
+  "scripts": { "start": "node index.js" }
+}
