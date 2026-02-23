@@ -22,7 +22,7 @@ A terminal client for [rugplay.com](https://rugplay.com) — by zt01
 ## Setup
 
 ```bash
-git clone https://github.com/yourname/rugplay-cli
+git clone https://github.com/DevLJSP/rugplay-cli
 cd rugplay-cli
 node index.js help
 ```
