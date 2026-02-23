@@ -164,6 +164,12 @@ rugplay-cli/
 
 All data comes from the public `rugplay.com/api/*` endpoints (no `/v1`, no auth required). The client hits the same routes the website uses, so everything is real-time.
 
+## Disclaimer
+
+This project is **educational**. It was built to demonstrate how the Rugplay system works — how its public API is structured, how market data flows, and how a terminal client can consume it.
+
+**zt01 is not responsible for any unwanted use, misuse, or illegal scraping of rugplay.com.** Use this tool responsibly and in accordance with Rugplay's terms of service. This project is not affiliated with or endorsed by Rugplay.
+
 ## License
 
 MIT
