@@ -17,6 +17,7 @@ A terminal client for [rugplay.com](https://rugplay.com) — by zt01
 
 - Node.js 18+
 - No dependencies, no API key
+- Optional: `npm install ws` for the `live` command on Node < 22
 
 ## Setup
 
@@ -24,6 +25,17 @@ A terminal client for [rugplay.com](https://rugplay.com) — by zt01
 git clone https://github.com/yourname/rugplay-cli
 cd rugplay-cli
 node index.js help
+```
+
+## Auto-updater
+
+Every time you run a command, the CLI silently checks the remote `version.txt` on GitHub. If a newer version is available, a notice is shown:
+
+```
+──────────────────────────────────────────────────────────────
+  ⬆  New version available: 1.1.0  (current: 1.0.0)
+     git pull && npm install
+──────────────────────────────────────────────────────────────
 ```
 
 ## Commands
@@ -90,7 +102,7 @@ node index.js holders TEST --limit=100
 ---
 
 ### `trades`
-Live feed of recent trades across all coins.
+Recent trades across all coins (snapshot).
 
 ```bash
 node index.js trades
@@ -102,6 +114,22 @@ node index.js trades --limit=100 --min=1000
 |------|-------------|---------|
 | `--limit` | number of trades (max 1000) | `30` |
 | `--min` | minimum trade value in $ | `0` |
+
+---
+
+### `live`
+Real-time trade stream over WebSocket. Connects to `wss://ws.rugplay.com/` and prints trades as they happen. You will be prompted for your userId on start (press Enter to connect anonymously).
+
+```bash
+node index.js live
+node index.js live --min=1000
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--min` | minimum trade value in $ | `0` |
+
+> Requires `npm install ws` on Node < 22. Node 22+ uses the built-in WebSocket.
 
 ---
 
@@ -143,26 +171,55 @@ node index.js hopium-q 101
 
 ---
 
+### `macro`
+Save and run command shortcuts with preset flags. Macros are stored in `macros.json` at the project root.
+
+```bash
+node index.js macro list                          # list all saved macros
+node index.js macro add <name> <cmd> [flags...]   # save a macro
+node index.js macro run <name>                    # run a macro
+node index.js macro remove <name>                 # delete a macro
+```
+
+**Examples:**
+
+```bash
+node index.js macro add whales   trades --min=5000
+node index.js macro add btc      coin BTC --tf=1h
+node index.js macro add topcap   market --sort=marketCap --limit=5
+node index.js macro add rich     leaderboard rich
+
+node index.js macro run whales   # runs: trades --min=5000
+node index.js macro list
+node index.js macro remove btc
+```
+
+---
+
 ## Project Structure
 
 ```
 rugplay-cli/
 ├── index.js                  # entry point & command router
-├── package.json
+├── macros.json               # saved macros (auto-created)
+├── version.txt               # current version
 └── src/
     ├── api.js                # all HTTP calls to rugplay.com/api/*
     ├── display.js            # colors, formatting, ASCII charts
+    ├── updater.js            # auto-update checker
     └── commands/
         ├── market.js         # top, market
         ├── coin.js           # coin, holders
         ├── hopium.js         # hopium, hopium-q
         ├── leaderboard.js    # leaderboard
-        └── trades.js         # trades
+        ├── trades.js         # trades
+        ├── live.js           # live
+        └── macro.js          # macro
 ```
 
 ## How It Works
 
-All data comes from the public `rugplay.com/api/*` endpoints (no `/v1`, no auth required). The client hits the same routes the website uses, so everything is real-time.
+All data comes from the public `rugplay.com/api/*` endpoints (no `/v1`, no auth required). The client hits the same routes the website uses, so everything is real-time. The `live` command connects directly to the rugplay WebSocket at `wss://ws.rugplay.com/` and streams trades as they occur.
 
 ## Disclaimer
 
