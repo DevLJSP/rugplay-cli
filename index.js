@@ -21,7 +21,7 @@ const COMMANDS = {
 
 function showHelp() {
   console.log(`
-${c.bold(c.cyan('rugplay-cli'))}  ${c.dim('— rugplay.com terminal client (no API key needed)')}
+${c.bold(c.cyan('rugplay-cli'))}  ${c.dim('— rugplay.com terminal client (credits to zt01 xD) ')}
 
 ${c.yellow('Usage:')}  node index.js <command> [args]
 
