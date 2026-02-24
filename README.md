@@ -12,7 +12,7 @@
   CLI  ─ terminal client for rugplay.com ─ enhanced by Glaringly
 ```
 
-## What's New in v2.0 (Glaringly fork)
+## What's New in v2.0
 
 - **Full ASCII banner** on startup
 - **Revamped table rendering** with box-drawing chars and aligned columns
