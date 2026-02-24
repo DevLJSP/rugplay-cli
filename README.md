@@ -3,14 +3,18 @@
 > Terminal client for [rugplay.com](https://rugplay.com) — originally by **zt01**, enhanced by **Glaringly**
 
 ```
-  ██████╗ ██╗   ██╗ ██████╗ ██████╗ ██╗      █████╗ ██╗   ██╗
-  ██╔══██╗██║   ██║██╔════╝ ██╔══██╗██║     ██╔══██╗╚██╗ ██╔╝
-  ██████╔╝██║   ██║██║  ███╗██████╔╝██║     ███████║ ╚████╔╝
-  ██╔══██╗██║   ██║██║   ██║██╔═══╝ ██║     ██╔══██║  ╚██╔╝
-  ██║  ██║╚██████╔╝╚██████╔╝██║     ███████╗██║  ██║   ██║
-  ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═╝   ╚═╝
-  CLI  ─ terminal client for rugplay.com ─ enhanced by Glaringly
-```
+
+██████╗ ██╗   ██╗ ██████╗ ██████╗ ██╗      █████╗ ██╗   ██╗
+██╔══██╗██║   ██║██╔════╝ ██╔══██╗██║     ██╔══██╗╚██╗ ██╔╝
+██████╔╝██║   ██║██║  ███╗██████╔╝██║     ███████║ ╚████╔╝
+██╔══██╗██║   ██║██║   ██║██╔═══╝ ██║     ██╔══██║  ╚██╔╝
+██║  ██║╚██████╔╝╚██████╔╝██║     ███████╗██║  ██║   ██║
+╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═╝   ╚═╝
+CLI  ─ terminal client for rugplay.com ─ enhanced by Glaringly
+
+````
+
+---
 
 ## What's New in v2.0
 
@@ -29,19 +33,73 @@
 - Concentration risk warning in `holders`
 - Running volume counter in `live`
 
+---
+
 ## Requirements
 
 - Node.js 18+
 - No required dependencies
 - Optional: `npm install ws` for `live` on Node < 22
 
+---
+
 ## Setup
+
+### API Key Setup (Required)
+
+RugPlay now requires an API key for all API requests.
+
+1) Generate an API key from your RugPlay dashboard.
+
+2) Set the environment variable:
+
+**Windows (CMD)**
+
+```bat
+setx RUGPLAY_API_KEY "YOUR_API_KEY_HERE"
+````
+
+**Windows (PowerShell)**
+
+```powershell
+$env:RUGPLAY_API_KEY="YOUR_API_KEY_HERE"
+```
+
+**macOS / Linux**
+
+```bash
+export RUGPLAY_API_KEY="YOUR_API_KEY_HERE"
+```
+
+3. **Restart your terminal** so the variable loads.
+
+4. Verify:
+
+**Windows**
+
+```bat
+echo %RUGPLAY_API_KEY%
+```
+
+**macOS / Linux**
+
+```bash
+echo $RUGPLAY_API_KEY
+```
+
+If your key prints, setup is complete.
+
+---
+
+### Install & Run
 
 ```bash
 git clone https://github.com/DevLJSP/rugplay-cli
 cd rugplay-cli
 node index.js help
 ```
+
+---
 
 ## Commands
 
@@ -90,7 +148,7 @@ node index.js watch BTC DOGE TEST --interval=5
 node index.js alert add BTC --above=100000
 node index.js alert add DOGE --below=0.05
 node index.js alert list
-node index.js alert check     # check if any alerts triggered
+node index.js alert check
 node index.js alert clear
 ```
 
@@ -103,6 +161,8 @@ node index.js macro run whales
 node index.js macro list
 node index.js macro remove btchour
 ```
+
+---
 
 ## Project Structure
 
@@ -129,10 +189,14 @@ rugplay-cli/
         └── alert.js          # [NEW] price alert system
 ```
 
+---
+
 ## Disclaimer
 
-Educational project. Not affiliated with or endorsed by Rugplay.  
+Educational project. Not affiliated with or endorsed by Rugplay.
 Use responsibly and in accordance with Rugplay's terms of service.
+
+---
 
 ## License
 
