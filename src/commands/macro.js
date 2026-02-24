@@ -1,132 +1,130 @@
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { c, pad, header, colHead, err } from '../display.js';
+// src/commands/macro.js — saved command shortcuts
+// enhanced by Glaringly
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MACROS_PATH = resolve(__dirname, '../../macros.json');
+'use strict';
 
-function load() {
-  if (!existsSync(MACROS_PATH)) return {};
-  try { return JSON.parse(readFileSync(MACROS_PATH, 'utf8')); }
-  catch { return {}; }
+const fs   = require('fs');
+const path = require('path');
+const { c, box } = require('../display');
+
+const MACRO_FILE = path.join(__dirname, '..', '..', 'macros.json');
+
+function loadMacros() {
+  try {
+    return JSON.parse(fs.readFileSync(MACRO_FILE, 'utf8'));
+  } catch {
+    return {};
+  }
 }
 
-function save(macros) {
-  writeFileSync(MACROS_PATH, JSON.stringify(macros, null, 2));
+function saveMacros(macros) {
+  fs.writeFileSync(MACRO_FILE, JSON.stringify(macros, null, 2));
 }
 
-function listMacros() {
-  const macros = load();
-  const entries = Object.entries(macros);
+async function macro(args, flags) {
+  const action = args[0];
+  const macros = loadMacros();
 
-  header('Macros');
+  switch (action) {
+    case 'list': {
+      const entries = Object.entries(macros);
+      if (!entries.length) {
+        console.log(c.dim('\n  No macros saved yet.\n'));
+        return;
+      }
+      const lines = entries.map(([name, cmd]) =>
+        `  ${c.cyan(name.padEnd(20))} ${c.dim('→')} ${c.white(cmd)}`
+      ).join('\n');
+      console.log('');
+      console.log(box(lines, `Saved Macros (${entries.length})`));
+      console.log('');
+      break;
+    }
 
-  if (entries.length === 0) {
-    console.log(c.dim('  no macros saved yet.\n'));
-    console.log(c.dim('  macro add <name> <command> [flags...]'));
-    console.log(c.dim('  e.g.  macro add whales trades --min=5000\n'));
-    return;
+    case 'add': {
+      const name    = args[1];
+      const cmdParts = args.slice(2).concat(
+        Object.entries(flags).map(([k, v]) => v === true ? `--${k}` : `--${k}=${v}`)
+      );
+      if (!name || !cmdParts.length) {
+        console.log(c.red('  Usage: macro add <name> <command> [flags...]'));
+        return;
+      }
+      const cmdStr  = cmdParts.join(' ');
+      macros[name]  = cmdStr;
+      saveMacros(macros);
+      console.log(`\n  ${c.bgreen('✓')} Macro ${c.cyan(name)} saved → ${c.white(cmdStr)}\n`);
+      break;
+    }
+
+    case 'run': {
+      const name = args[1];
+      if (!name) {
+        console.log(c.red('  Usage: macro run <name>'));
+        return;
+      }
+      if (!macros[name]) {
+        console.log(c.red(`  ✗ Macro "${name}" not found. Run 'macro list' to see saved macros.`));
+        return;
+      }
+      const cmdStr = macros[name];
+      console.log(`\n  ${c.dim('▶ Running macro:')} ${c.cyan(name)} ${c.dim('→')} ${c.white(cmdStr)}\n`);
+
+      // Re-invoke CLI with macro args
+      const argv = cmdStr.split(/\s+/);
+      process.argv = ['node', 'index.js', ...argv];
+
+      // Re-parse and run
+      const rawArgs = argv;
+      const cmd     = rawArgs[0];
+      const mArgs   = rawArgs.slice(1).filter(a => !a.startsWith('--'));
+      const mFlags  = {};
+      rawArgs.slice(1).filter(a => a.startsWith('--')).forEach(f => {
+        const [k, v] = f.slice(2).split('=');
+        mFlags[k] = v !== undefined ? v : true;
+      });
+
+      const handlers = {
+        top:         () => require('./market').top(),
+        market:      () => require('./market').market(mArgs, mFlags),
+        coin:        () => require('./coin').coin(mArgs, mFlags),
+        holders:     () => require('./coin').holders(mArgs, mFlags),
+        trades:      () => require('./trades').trades(mFlags),
+        leaderboard: () => require('./leaderboard').leaderboard(mArgs),
+        hopium:      () => require('./hopium').hopium(mFlags),
+        'hopium-q':  () => require('./hopium').hopiumQuestion(mArgs),
+      };
+
+      const handler = handlers[cmd];
+      if (handler) {
+        await handler();
+      } else {
+        console.log(c.red(`  ✗ Unknown command in macro: "${cmd}"`));
+      }
+      break;
+    }
+
+    case 'remove': {
+      const name = args[1];
+      if (!name) {
+        console.log(c.red('  Usage: macro remove <name>'));
+        return;
+      }
+      if (!macros[name]) {
+        console.log(c.red(`  ✗ Macro "${name}" not found.`));
+        return;
+      }
+      delete macros[name];
+      saveMacros(macros);
+      console.log(`\n  ${c.bgreen('✓')} Macro ${c.cyan(name)} removed.\n`);
+      break;
+    }
+
+    default: {
+      console.log(c.red(`  ✗ Unknown macro action: "${action}"`));
+      console.log(`  ${c.dim('Usage:')} macro <list|add|run|remove>`);
+    }
   }
-
-  colHead([
-    ['Name',    16],
-    ['Command',  8],
-    ['Args',    40],
-  ]);
-
-  for (const [name, { command, args }] of entries) {
-    console.log([
-      pad(c.bold(c.green(name)),   16),
-      pad(c.cyan(command),          8),
-      pad(c.dim(args.join(' ')),   40),
-    ].join('  '));
-  }
-  console.log();
 }
 
-function addMacro(args) {
-  const name = args[0];
-  const command = args[1];
-  const flags = args.slice(2);
-
-  if (!name || !command) {
-    err('Usage: macro add <name> <command> [flags...]');
-    err('e.g.   macro add whales trades --min=5000');
-    return;
-  }
-
-  const macros = load();
-
-  if (macros[name]) {
-    console.log(c.yellow(`  overwriting existing macro "${name}"`));
-  }
-
-  macros[name] = { command, args: flags };
-  save(macros);
-  console.log(`\n  ${c.green('✓')}  macro ${c.bold(name)} saved  →  ${c.cyan(command)} ${c.dim(flags.join(' '))}\n`);
-}
-
-function removeMacro(name) {
-  if (!name) { err('Usage: macro remove <name>'); return; }
-
-  const macros = load();
-  if (!macros[name]) { err(`macro "${name}" not found`); return; }
-
-  delete macros[name];
-  save(macros);
-  console.log(`\n  ${c.green('✓')}  macro ${c.bold(name)} removed\n`);
-}
-
-export async function runMacro(name) {
-  if (!name) { err('Usage: macro run <name>'); return; }
-
-  const macros = load();
-  const macro = macros[name];
-
-  if (!macro) {
-    err(`macro "${name}" not found`);
-    listMacros();
-    return;
-  }
-
-  console.log(c.dim(`  running macro: ${c.bold(name)}  →  ${macro.command} ${macro.args.join(' ')}\n`));
-
-  const { COMMANDS } = await import('../../index.js');
-  const entry = COMMANDS[macro.command.toLowerCase()];
-
-  if (!entry) {
-    err(`unknown command in macro: "${macro.command}"`);
-    return;
-  }
-
-  await entry.fn(macro.args);
-}
-
-export async function cmdMacro(args) {
-  const sub = args[0];
-
-  const subs = {
-    list:   () => listMacros(),
-    add:    () => addMacro(args.slice(1)),
-    remove: () => removeMacro(args[1]),
-    rm:     () => removeMacro(args[1]),
-    run:    () => runMacro(args[1]),
-  };
-
-  if (!sub || !subs[sub]) {
-    header('Macro Usage');
-    console.log(`  ${c.bold(c.green('macro list'))}                              list all macros`);
-    console.log(`  ${c.bold(c.green('macro add'))}  ${c.cyan('<name> <cmd> [flags]')}   save a macro`);
-    console.log(`  ${c.bold(c.green('macro run'))}  ${c.cyan('<name>')}                 run a macro`);
-    console.log(`  ${c.bold(c.green('macro remove'))}  ${c.cyan('<name>')}              delete a macro`);
-    console.log(`\n  ${c.yellow('Examples:')}`);
-    console.log(`  ${c.dim('macro add whales trades --min=5000')}`);
-    console.log(`  ${c.dim('macro add topcap market --sort=marketCap --limit=5')}`);
-    console.log(`  ${c.dim('macro add btc coin BTC --tf=1h')}`);
-    console.log(`  ${c.dim('macro run whales')}\n`);
-    return;
-  }
-
-  await subs[sub]();
-}
+module.exports = { macro };
