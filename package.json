@@ -1,7 +1,7 @@
 {
   "name": "rugplay-cli",
   "version": "2.0.0",
-  "description": "Terminal client for rugplay.com,
+  "description": "Terminal client for rugplay.com",
   "main": "index.js",
   "bin": {
     "rugplay": "./index.js"
