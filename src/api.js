@@ -1,134 +1,101 @@
-// src/api.js — all HTTP calls to rugplay.com/api/*
-// enhanced by Glaringly
+// src/api.js — RugPlay Official API Client (fixed)
 
 'use strict';
 
 const https = require('https');
 const http  = require('http');
 
-const BASE = 'https://rugplay.com/api';
+const BASE = 'https://rugplay.com/api/v1';
 
-// ─── Core fetch ──────────────────────────────────────────────────────────────
+const API_KEY = process.env.RUGPLAY_API_KEY;
+
+if (!API_KEY) {
+  throw new Error('Missing API key: set RUGPLAY_API_KEY environment variable');
+}
+
+// ─── Core Fetch ──────────────────────────────────────────────────────────────
 
 function get(path, params = {}) {
-  const qs  = Object.keys(params).length
+  const qs = Object.keys(params).length
     ? '?' + new URLSearchParams(params).toString()
     : '';
+
   const url = `${BASE}${path}${qs}`;
 
   return new Promise((resolve, reject) => {
     const mod = url.startsWith('https') ? https : http;
+
     const req = mod.get(url, {
       headers: {
-        'User-Agent': 'rugplay-cli/2.0 (github.com/DevLJSP/rugplay-cli)',
-        'Accept':     'application/json',
-      }
+        'User-Agent': 'rugplay-cli/2.2',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`,
+      },
+      timeout: 15000
     }, (res) => {
       let data = '';
+
       res.on('data', chunk => data += chunk);
+
       res.on('end', () => {
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          return reject(new Error(`HTTP ${res.statusCode} for ${path}`));
+        if (res.statusCode !== 200) {
+          return reject(new Error(`HTTP ${res.statusCode}: ${data}`));
         }
+
         try {
           resolve(JSON.parse(data));
-        } catch (e) {
+        } catch {
           reject(new Error(`Invalid JSON from ${path}`));
         }
       });
     });
+
+    req.on('timeout', () =>
+      req.destroy(new Error(`Timeout for ${path}`))
+    );
+
     req.on('error', reject);
-    req.setTimeout(10000, () => {
-      req.destroy(new Error(`Request timeout for ${path}`));
-    });
   });
 }
 
 // ─── Market ──────────────────────────────────────────────────────────────────
 
-async function getTopCoins() {
-  return get('/coins', { sortBy: 'marketCap', order: 'desc', limit: 50 });
-}
+const getTopCoins = () =>
+  get('/top');
 
-async function getMarket({
-  search  = '',
-  sort    = 'marketCap',
-  order   = 'desc',
-  price   = 'all',
-  change  = 'all',
-  page    = 1,
-  limit   = 20,
-} = {}) {
-  const params = { sortBy: sort, order, page, limit };
+const getMarket = ({
+  search = '',
+  sort = 'marketCap',
+  order = 'desc',
+  page = 1,
+  limit = 20,
+} = {}) => {
+  const params = { sort, order, page, limit };
   if (search) params.search = search;
-  if (price  !== 'all') params.priceRange = price;
-  if (change !== 'all') params.changeFilter = change;
-  return get('/coins', params);
-}
+  return get('/market', params);
+};
 
-async function getCoin(symbol) {
-  return get(`/coin/${symbol.toUpperCase()}`);
-}
+const getCoin = (symbol) =>
+  get(`/coin/${symbol.toUpperCase()}`);
 
-async function getCoinCandles(symbol, timeframe = '1h') {
-  return get(`/coin/${symbol.toUpperCase()}/candles`, { timeframe });
-}
-
-async function getCoinHolders(symbol, limit = 50) {
-  return get(`/coin/${symbol.toUpperCase()}/holders`, { limit });
-}
-
-// ─── Trades ──────────────────────────────────────────────────────────────────
-
-async function getTrades(limit = 30, minValue = 0) {
-  const params = { limit };
-  if (minValue > 0) params.minValue = minValue;
-  return get('/trades', params);
-}
-
-// ─── Leaderboard ─────────────────────────────────────────────────────────────
-
-async function getLeaderboard(type = 'rich', limit = 50) {
-  return get('/leaderboard', { type, limit });
-}
+const getCoinHolders = (symbol) =>
+  get(`/holders/${symbol.toUpperCase()}`);
 
 // ─── Hopium ──────────────────────────────────────────────────────────────────
 
-async function getHopium({ status = 'ACTIVE', page = 1, limit = 20 } = {}) {
-  return get('/hopium', { status, page, limit });
-}
+const getHopium = ({ page = 1, limit = 20 } = {}) =>
+  get('/hopium', { page, limit });
 
-async function getHopiumQuestion(id) {
-  return get(`/hopium/${id}`);
-}
+const getHopiumQuestion = (id) =>
+  get(`/hopium/${id}`);
 
-// ─── Portfolio / User ─────────────────────────────────────────────────────────
-
-async function getPortfolio(userId) {
-  return get(`/user/${userId}/portfolio`);
-}
-
-async function getUserProfile(userId) {
-  return get(`/user/${userId}`);
-}
-
-// ─── Search ──────────────────────────────────────────────────────────────────
-
-async function searchCoins(query) {
-  return get('/coins/search', { q: query });
-}
+// ─── Exports ─────────────────────────────────────────────────────────────────
 
 module.exports = {
   getTopCoins,
   getMarket,
   getCoin,
-  getCoinCandles,
   getCoinHolders,
-  getTrades,
-  getLeaderboard,
   getHopium,
   getHopiumQuestion,
-  getPortfolio,
-  getUserProfile,
-  searchCoins,
 };
