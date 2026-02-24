@@ -1,45 +1,58 @@
-import { readFileSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { c } from './display.js';
+// src/updater.js — auto-update checker
+// enhanced by Glaringly
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const REMOTE_VERSION_URL = 'https://raw.githubusercontent.com/DevLJSP/rugplay-cli/main/version.txt';
+'use strict';
 
-function parseVer(s) {
-  return s.trim().split('.').map(Number);
+const https   = require('https');
+const path    = require('path');
+const fs      = require('fs');
+const { c, hr } = require('./display');
+
+const VERSION_URL  = 'https://raw.githubusercontent.com/DevLJSP/rugplay-cli/main/version.txt';
+const LOCAL_FILE   = path.join(__dirname, '..', 'version.txt');
+
+function getCurrentVersion() {
+  try {
+    return fs.readFileSync(LOCAL_FILE, 'utf8').trim();
+  } catch {
+    return '0.0.0';
+  }
 }
 
-function isNewer(remote, local) {
+function fetchRemoteVersion() {
+  return new Promise((resolve) => {
+    const req = https.get(VERSION_URL, {
+      headers: { 'User-Agent': 'rugplay-cli' }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve(data.trim()));
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(3000, () => { req.destroy(); resolve(null); });
+  });
+}
+
+function semverGt(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
   for (let i = 0; i < 3; i++) {
-    if ((remote[i] ?? 0) > (local[i] ?? 0)) return true;
-    if ((remote[i] ?? 0) < (local[i] ?? 0)) return false;
+    if ((pa[i] || 0) > (pb[i] || 0)) return true;
+    if ((pa[i] || 0) < (pb[i] || 0)) return false;
   }
   return false;
 }
 
-export async function checkForUpdates() {
-  try {
-    const localRaw = readFileSync(resolve(__dirname, '../version.txt'), 'utf8');
-    const local = parseVer(localRaw);
-
-    const res = await fetch(REMOTE_VERSION_URL, {
-      headers: { 'User-Agent': 'rugplay-cli/1.0' },
-      signal: AbortSignal.timeout(4000),
-    });
-
-    if (!res.ok) return;
-
-    const remoteRaw = await res.text();
-    const remote = parseVer(remoteRaw);
-
-    if (isNewer(remote, local)) {
-      const bar = '─'.repeat(62);
-      console.log(`\n${c.yellow(bar)}`);
-      console.log(c.yellow(`  ⬆  Nova versão disponível: ${c.bold(remoteRaw.trim())}  (atual: ${localRaw.trim()})`));
-      console.log(c.yellow(`     git pull && npm install`));
-      console.log(`${c.yellow(bar)}\n`);
-    }
-  } catch {
+async function checkForUpdate() {
+  const current = getCurrentVersion();
+  const remote  = await fetchRemoteVersion();
+  if (remote && semverGt(remote, current)) {
+    console.log(hr());
+    console.log(`  ${c.bgreen('⬆')}  ${c.bold('New version available:')} ${c.cyan(remote)}  ${c.dim(`(current: ${current})`)}`);
+    console.log(`     ${c.dim('git pull && npm install')}`);
+    console.log(hr());
+    console.log('');
   }
 }
+
+module.exports = { checkForUpdate, getCurrentVersion };
