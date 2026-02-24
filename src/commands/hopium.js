@@ -1,113 +1,140 @@
-import { api } from '../api.js';
-import { c, $$, num, trunc, pad, header, colHead, probBar, timeAgo, tip, parseFlags, err } from '../display.js';
+// src/commands/hopium.js — prediction markets
+// enhanced by Glaringly
 
-export async function cmdHopium(args) {
-  const { flags } = parseFlags(args);
+'use strict';
 
-  const params = {
-    status: (flags.status ?? 'ACTIVE').toUpperCase(),
-    page:   flags.page  ?? 1,
-    limit:  flags.limit ?? 20,
+const api = require('../api');
+const { c, box, table, hr, fmtPrice, fmtTime, progressBar, spinner } = require('../display');
+
+async function hopium(flags) {
+  const opts = {
+    status: flags.status || 'ACTIVE',
+    page:   parseInt(flags.page)  || 1,
+    limit:  parseInt(flags.limit) || 20,
   };
 
-  const data = await api.hopium(params);
-
-  header(`Prediction Markets  •  ${params.status}  •  page ${data.page}/${data.totalPages}  (${data.total})`);
-  colHead([
-    ['ID',         6],
-    ['Question',  40],
-    ['YES',       22],
-    ['Pool',      12, true],
-    ['Expires',   10],
-  ]);
-
-  for (const q of data.questions) {
-    const bar = probBar(q.yesPercentage, 10);
-    const yesTxt = `${q.yesPercentage.toFixed(0)}%`;
-    const expires = timeAgo(q.resolutionDate);
-
-    console.log([
-      pad(c.dim(q.id),         6),
-      pad(trunc(q.question,   40), 40),
-      `${bar} ${c.green(pad(yesTxt, 4, true))}`,
-      pad($$(q.totalAmount),  12, true),
-      pad(c.dim(expires),     10),
-    ].join('  '));
+  const spin = spinner('Fetching prediction markets');
+  let data;
+  try {
+    data = await api.getHopium(opts);
+  } finally {
+    spin.stop();
   }
 
-  tip('hopium-q <ID>   — see details + probability chart\n   --status=ACTIVE|RESOLVED|ALL  --page=N  --limit=N');
-}
+  const list  = data?.questions || data?.data || data || [];
+  const total = data?.total || list.length;
 
-export async function cmdHopiumQ(args) {
-  const { pos } = parseFlags(args);
-  const id = pos[0];
-  if (!id || isNaN(Number(id))) { err('Usage: hopium-q <ID>'); return; }
-
-  const data = await api.hopiumQ(id);
-  const q = data.question;
-
-  header(`Prediction #${q.id}`);
-  console.log(`\n  ${c.bold(q.question)}\n`);
-
-  const total = q.totalAmount;
-  const barW = 36;
-  console.log(`  ${probBar(q.yesPercentage, barW)}`);
-  console.log(
-    `  ${c.green('YES ' + q.yesPercentage.toFixed(1) + '%')}` +
-    `  ${c.dim('·')}  ` +
-    `${c.red('NO ' + q.noPercentage.toFixed(1) + '%')}\n`
-  );
-
-  const row = (label, value) =>
-    console.log(`  ${pad(c.yellow(label), 16)} ${value}`);
-
-  row('Status',        q.status === 'ACTIVE' ? c.green('ACTIVE') : c.dim(q.status));
-  row('Total Pool',    $$(total));
-  row('YES Pool',      $$(q.yesAmount));
-  row('NO Pool',       $$(q.noAmount));
-  row('Resolution',    new Date(q.resolutionDate).toLocaleString());
-  row('Creator',       `${q.creator.name} ${c.dim('@' + q.creator.username)}`);
-  row('Needs Search',  q.requiresWebSearch ? c.yellow('Yes') : 'No');
-  if (q.resolvedAt) row('Resolved At', new Date(q.resolvedAt).toLocaleString());
-  if (q.aiResolution) row('AI Result',  c.bold(q.aiResolution));
-
-  if (q.recentBets?.length > 0) {
-    console.log(`\n  ${c.bold(c.cyan('Recent Bets'))}\n`);
-    colHead([
-      ['Side',    6],
-      ['Amount', 12, true],
-      ['User',   20],
-      ['When',   10],
-    ]);
-    for (const b of q.recentBets) {
-      console.log([
-        pad(b.side ? c.green('YES') : c.red('NO'), 6),
-        pad($$(b.amount),                         12, true),
-        pad(b.user?.username ?? '?',              20),
-        pad(c.dim(timeAgo(b.createdAt)),          10),
-      ].join('  '));
-    }
+  if (!list.length) {
+    console.log(c.yellow('  No prediction markets found.'));
+    return;
   }
 
-  if (data.probabilityHistory?.length > 1) {
-    console.log(`\n  ${c.bold(c.cyan('Probability Over Time'))}\n`);
-    renderProbChart(data.probabilityHistory, 6, 50);
-  }
+  const cols = [
+    { key: 'id',          label: 'ID',       width: 6,  align: 'right',
+      format: (v) => c.dim(String(v)) },
+    { key: 'question',    label: 'Question', width: 42,
+      format: (v) => c.white(String(v || '').slice(0, 42)) },
+    { key: 'status',      label: 'Status',   width: 10,
+      format: (v) => {
+        if (v === 'ACTIVE')   return c.bgreen('ACTIVE');
+        if (v === 'RESOLVED') return c.dim('RESOLVED');
+        return c.yellow(v);
+      }
+    },
+    { key: 'yesPool',     label: 'YES $',    width: 12, align: 'right',
+      format: (v) => fmtPrice(v) },
+    { key: 'noPool',      label: 'NO  $',    width: 12, align: 'right',
+      format: (v) => fmtPrice(v) },
+    { key: '_yesPct',     label: 'YES %',    width: 14,
+      format: (v, r) => {
+        if (r.yesPool === undefined) return c.dim('—');
+        return progressBar(r._yesPct || 0, 10, c.green);
+      }
+    },
+  ];
 
-  console.log();
-}
-
-function renderProbChart(history, height, width) {
-  const slice = history.slice(-width);
-  const grid = Array.from({ length: height }, () => new Array(slice.length).fill(' '));
-
-  slice.forEach((p, x) => {
-    const y = height - 1 - Math.round(((Math.min(100, Math.max(0, p.value)) / 100)) * (height - 1));
-    const col = p.value >= 50 ? '\x1b[32m' : '\x1b[31m';
-    for (let i = y; i < height; i++) grid[i][x] = `${col}▄\x1b[0m`;
+  const rows = list.map(q => {
+    const yes = parseFloat(q.yesPool || 0);
+    const no  = parseFloat(q.noPool  || 0);
+    const tot = yes + no;
+    return { ...q, _yesPct: tot > 0 ? (yes / tot) * 100 : 50 };
   });
 
-  console.log(`  ${c.dim('100%')}`);
-  grid.forEach((row) => console.log('  ' + row.join('')));
-  console.log(`  ${c.dim('  0%')}`);
+  const statusLabel = opts.status === 'ALL' ? 'All' : opts.status;
+  console.log('');
+  console.log(box(table(rows, cols), `Hopium — ${statusLabel} Markets (${total} total)`));
+  console.log('');
+  console.log(`  ${c.dim('View detail:')} ${c.cyan('node index.js hopium-q <id>')}`);
+  console.log('');
 }
+
+async function hopiumQuestion(args) {
+  const id = args[0];
+  if (!id) {
+    console.log(c.red('  Usage: node index.js hopium-q <id>'));
+    return;
+  }
+
+  const spin = spinner(`Fetching question #${id}`);
+  let data;
+  try {
+    data = await api.getHopiumQuestion(id);
+  } finally {
+    spin.stop();
+  }
+
+  const q = data?.question || data;
+  if (!q) {
+    console.log(c.red(`  ✗ Question #${id} not found.`));
+    return;
+  }
+
+  const yes     = parseFloat(q.yesPool || 0);
+  const no      = parseFloat(q.noPool  || 0);
+  const total   = yes + no;
+  const yesPct  = total > 0 ? (yes / total) * 100 : 50;
+  const noPct   = 100 - yesPct;
+
+  console.log('');
+  console.log(c.bold(`  ${c.cyan(`#${q.id}`)} ${c.white(q.question)}`));
+  console.log('');
+  console.log(`  ${c.dim('Status:')}    ${q.status === 'ACTIVE' ? c.bgreen('ACTIVE') : c.dim(q.status)}`);
+  console.log(`  ${c.dim('Created:')}   ${q.createdAt ? new Date(q.createdAt).toLocaleString() : '—'}`);
+  if (q.resolvedAt) {
+    console.log(`  ${c.dim('Resolved:')}  ${new Date(q.resolvedAt).toLocaleString()}`);
+    console.log(`  ${c.dim('Outcome:')}   ${q.outcome === 'YES' ? c.bgreen('YES') : c.bred('NO')}`);
+  }
+  console.log('');
+  console.log(`  ${c.bgreen('YES')}  ${progressBar(yesPct, 30, c.green)}  ${c.green(yesPct.toFixed(1) + '%')}  ${fmtPrice(yes)}`);
+  console.log(`  ${c.bred('NO ')}  ${progressBar(noPct,  30, c.red)}   ${c.red(noPct.toFixed(1) + '%')}  ${fmtPrice(no)}`);
+  console.log('');
+  console.log(`  ${c.dim('Total pool:')} ${fmtPrice(total)}`);
+
+  // Recent bets
+  const bets = q.bets || q.recentBets || [];
+  if (bets.length > 0) {
+    console.log('');
+    console.log(c.dim('  Recent bets:'));
+    bets.slice(0, 10).forEach(bet => {
+      const side  = bet.side === 'YES' ? c.bgreen('YES') : c.bred(' NO');
+      const amt   = fmtPrice(bet.amount);
+      const user  = c.dim((bet.userId || 'anon').slice(0, 18));
+      const time  = fmtTime(bet.timestamp || bet.createdAt);
+      console.log(`    ${side}  ${amt.padStart(12)}  ${user}  ${time}`);
+    });
+  }
+
+  // Probability chart (text-based if history available)
+  const history = q.history || q.probabilityHistory || [];
+  if (history.length > 2) {
+    const { sparkline } = require('../display');
+    const probs = history.map(h => h.yesProbability * 100);
+    const spark = sparkline(probs, 40);
+    console.log('');
+    console.log(`  ${c.dim('Probability history:')} ${spark}  ${c.dim('(YES %)')}`);
+  }
+
+  console.log('');
+}
+
+module.exports = { hopium, hopiumQuestion };
