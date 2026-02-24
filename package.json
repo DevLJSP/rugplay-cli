@@ -1,14 +1,22 @@
 {
   "name": "rugplay-cli",
-  "version": "1.0.0",
-  "type": "module",
+  "version": "2.0.0",
+  "description": "Terminal client for rugplay.com,
+  "main": "index.js",
   "bin": {
     "rugplay": "./index.js"
   },
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "help": "node index.js help"
   },
-  "dependencies": {
-    "ws": "^8.19.0"
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["rugplay", "crypto", "cli", "terminal", "trading"],
+  "author": "zt01 (enhanced by Glaringly)",
+  "license": "MIT",
+  "optionalDependencies": {
+    "ws": "^8.0.0"
   }
 }
