@@ -1,81 +1,94 @@
 #!/usr/bin/env node
+// rugplay-cli — enhanced fork by Glaringly
+// original by zt01 | upgraded to the MAX
 
-import { cmdTop, cmdMarket }        from './src/commands/market.js';
-import { cmdCoin, cmdHolders }      from './src/commands/coin.js';
-import { cmdHopium, cmdHopiumQ }    from './src/commands/hopium.js';
-import { cmdLeaderboard }           from './src/commands/leaderboard.js';
-import { cmdTrades }                from './src/commands/trades.js';
-import { cmdLive }                  from './src/commands/live.js';
-import { cmdMacro }                 from './src/commands/macro.js';
-import { checkForUpdates }          from './src/updater.js';
-import { c, err }                   from './src/display.js';
+const { checkForUpdate } = require('./src/updater');
+const { printBanner }    = require('./src/display');
 
-export const COMMANDS = {
-  top:         { fn: cmdTop,          desc: 'Top 50 coins by market cap' },
-  market:      { fn: cmdMarket,       desc: 'Browse market  [--search --sort --page ...]' },
-  coin:        { fn: cmdCoin,         desc: 'Coin detail + chart  <SYMBOL> [--tf=1m|1h|...]' },
-  holders:     { fn: cmdHolders,      desc: 'Top holders  <SYMBOL> [--limit=N]' },
-  trades:      { fn: cmdTrades,       desc: 'Recent trades  [--limit=N] [--min=VALUE]' },
-  live:        { fn: cmdLive,         desc: 'Live trade listener  [--min=VALUE]' },
-  macro:       { fn: cmdMacro,        desc: 'Macros  <list|add|run|remove>' },
-  leaderboard: { fn: cmdLeaderboard,  desc: 'Leaderboard  <rugpullers|losers|cash|rich>' },
-  lb:          { fn: cmdLeaderboard,  desc: 'Alias for leaderboard' },
-  hopium:      { fn: cmdHopium,       desc: 'Prediction markets  [--status=ACTIVE|ALL]' },
-  'hopium-q':  { fn: cmdHopiumQ,      desc: 'Prediction detail  <ID>' },
+const COMMANDS = {
+  top:         () => require('./src/commands/market').top(),
+  market:      () => require('./src/commands/market').market(args, flags),
+  coin:        () => require('./src/commands/coin').coin(args, flags),
+  holders:     () => require('./src/commands/coin').holders(args, flags),
+  trades:      () => require('./src/commands/trades').trades(flags),
+  live:        () => require('./src/commands/live').live(flags),
+  leaderboard: () => require('./src/commands/leaderboard').leaderboard(args),
+  hopium:      () => require('./src/commands/hopium').hopium(flags),
+  'hopium-q':  () => require('./src/commands/hopium').hopiumQuestion(args),
+  macro:       () => require('./src/commands/macro').macro(args, flags),
+  portfolio:   () => require('./src/commands/portfolio').portfolio(args, flags),
+  watch:       () => require('./src/commands/watch').watch(args, flags),
+  alert:       () => require('./src/commands/alert').alert(args, flags),
+  help:        () => showHelp(),
 };
 
-function showHelp() {
-  console.log(`
-${c.bold(c.cyan('rugplay-cli'))}  ${c.dim('— rugplay.com terminal client (credits to zt01 xD) ')}
-
-${c.yellow('Usage:')}  node index.js <command> [args]
-
-${c.yellow('Commands:')}
-`);
-  for (const [name, { desc }] of Object.entries(COMMANDS)) {
-    if (name === 'lb') continue;
-    console.log(`  ${c.bold(c.green(name.padEnd(14)))}  ${desc}`);
-  }
-  console.log(`
-${c.yellow('Examples:')}
-  node index.js top
-  node index.js coin BTC --tf=1h
-  node index.js market --search=doge --change=gainers --limit=10
-  node index.js holders TEST --limit=20
-  node index.js trades --limit=50 --min=500
-  node index.js live --min=1000
-  node index.js macro add whales trades --min=5000
-  node index.js macro run whales
-  node index.js macro list
-  node index.js leaderboard rich
-  node index.js hopium --status=ALL --page=2
-  node index.js hopium-q 101
-`);
-}
+// Parse CLI args
+const rawArgs = process.argv.slice(2);
+const cmd     = rawArgs[0];
+const args    = rawArgs.slice(1).filter(a => !a.startsWith('--'));
+const flags   = {};
+rawArgs.slice(1).filter(a => a.startsWith('--')).forEach(f => {
+  const [k, v] = f.slice(2).split('=');
+  flags[k] = v !== undefined ? v : true;
+});
 
 async function main() {
-  const [,, cmd, ...args] = process.argv;
+  printBanner();
+  await checkForUpdate();
 
-  if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') {
+  if (!cmd || cmd === 'help') {
     showHelp();
     return;
   }
 
-  const entry = COMMANDS[cmd.toLowerCase()];
-  if (!entry) {
-    err(`Unknown command: "${cmd}"`);
-    showHelp();
+  const handler = COMMANDS[cmd];
+  if (!handler) {
+    const { c } = require('./src/display');
+    console.log(c.red(`\n  ✗ Unknown command: "${cmd}"\n`));
+    console.log(`  Run ${c.cyan('node index.js help')} to see all commands.\n`);
     process.exit(1);
   }
-
-  await checkForUpdates();
 
   try {
-    await entry.fn(args);
-  } catch (e) {
-    err(e.message);
+    await handler();
+  } catch (err) {
+    const { c } = require('./src/display');
+    console.error(c.red(`\n  ✗ Error: ${err.message}\n`));
+    if (flags.debug) console.error(err.stack);
     process.exit(1);
   }
+}
+
+function showHelp() {
+  const { c, box } = require('./src/display');
+  const lines = [
+    `${c.bold(c.cyan('rugplay-cli'))} ${c.dim('— terminal client for rugplay.com')}`,
+    '',
+    `${c.bold(c.yellow('MARKET'))}`,
+    `  ${c.cyan('top')}                              Top 50 coins by market cap`,
+    `  ${c.cyan('market')}  [--search=] [--sort=] [--change=] [--price=] [--page=] [--limit=]`,
+    `  ${c.cyan('coin')}    <SYMBOL> [--tf=1m|5m|15m|1h|4h|1d]  ASCII candlestick chart`,
+    `  ${c.cyan('holders')} <SYMBOL> [--limit=]      Top holders & liquidation values`,
+    '',
+    `${c.bold(c.yellow('TRADING'))}`,
+    `  ${c.cyan('trades')}  [--limit=] [--min=]      Recent trades snapshot`,
+    `  ${c.cyan('live')}    [--min=]                 Real-time WebSocket stream`,
+    '',
+    `${c.bold(c.yellow('RANKINGS'))}`,
+    `  ${c.cyan('leaderboard')} <rugpullers|losers|cash|rich>`,
+    '',
+    `${c.bold(c.yellow('PREDICTIONS'))}`,
+    `  ${c.cyan('hopium')}    [--status=ACTIVE|RESOLVED|ALL] [--page=]`,
+    `  ${c.cyan('hopium-q')} <id>                    Question detail + chart`,
+    '',
+    `${c.bold(c.yellow('TOOLS'))}`,
+    `  ${c.cyan('portfolio')} <userId>                View a user portfolio`,
+    `  ${c.cyan('watch')}     <SYMBOL> [--interval=5] Live price watcher`,
+    `  ${c.cyan('macro')}     <list|add|run|remove>   Saved command shortcuts`,
+    '',
+    `${c.dim('  Add --debug to any command for verbose error output')}`,
+  ];
+  console.log(box(lines.join('\n'), 'Commands'));
 }
 
 main();
