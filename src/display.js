@@ -1,140 +1,305 @@
-const R = '\x1b[0m';
-const B = '\x1b[1m';
-const DIM = '\x1b[2m';
-const G = '\x1b[32m';
-const RED = '\x1b[31m';
-const Y = '\x1b[33m';
-const CY = '\x1b[36m';
-const MA = '\x1b[35m';
-const WH = '\x1b[37m';
+// src/display.js — colors, formatting, ASCII charts
+// enhanced by Glaringly
 
-export const c = {
-  bold:    (s) => `${B}${s}${R}`,
-  dim:     (s) => `${DIM}${s}${R}`,
-  green:   (s) => `${G}${s}${R}`,
-  red:     (s) => `${RED}${s}${R}`,
-  yellow:  (s) => `${Y}${s}${R}`,
-  cyan:    (s) => `${CY}${s}${R}`,
-  magenta: (s) => `${MA}${s}${R}`,
-  white:   (s) => `${WH}${s}${R}`,
+'use strict';
+
+// ─── ANSI color helpers ──────────────────────────────────────────────────────
+
+const ESC = '\x1b';
+const ansi = (code) => (str) => `${ESC}[${code}m${str}${ESC}[0m`;
+
+const c = {
+  reset:   ansi(0),
+  bold:    ansi(1),
+  dim:     ansi(2),
+  italic:  ansi(3),
+  under:   ansi(4),
+
+  black:   ansi(30),
+  red:     ansi(31),
+  green:   ansi(32),
+  yellow:  ansi(33),
+  blue:    ansi(34),
+  magenta: ansi(35),
+  cyan:    ansi(36),
+  white:   ansi(37),
+
+  bgRed:     ansi(41),
+  bgGreen:   ansi(42),
+  bgYellow:  ansi(43),
+  bgBlue:    ansi(44),
+  bgMagenta: ansi(45),
+  bgCyan:    ansi(46),
+
+  gray:    ansi(90),
+  bred:    ansi(91),
+  bgreen:  ansi(92),
+  byellow: ansi(93),
+  bblue:   ansi(94),
+  bmagenta:ansi(95),
+  bcyan:   ansi(96),
+  bwhite:  ansi(97),
 };
 
-export function $$(n) {
-  if (n == null || isNaN(n)) return 'N/A';
-  const abs = Math.abs(n);
-  const sign = n < 0 ? '-' : '';
-  if (abs >= 1e12) return `${sign}$${(abs / 1e12).toFixed(2)}T`;
-  if (abs >= 1e9)  return `${sign}$${(abs / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6)  return `${sign}$${(abs / 1e6).toFixed(2)}M`;
-  if (abs >= 1e3)  return `${sign}$${(abs / 1e3).toFixed(2)}K`;
-  if (abs < 0.001) return `${sign}$${abs.toFixed(8)}`;
-  return `${sign}$${abs.toFixed(4)}`;
+// ─── Terminal width ──────────────────────────────────────────────────────────
+
+function termWidth() {
+  return process.stdout.columns || 80;
 }
 
-export function pct(n) {
-  if (n == null || isNaN(n)) return 'N/A';
-  const s = `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
-  return n >= 0 ? c.green(s) : c.red(s);
+// ─── Box drawing ─────────────────────────────────────────────────────────────
+
+function box(content, title = '', color = c.cyan) {
+  const w      = Math.min(termWidth() - 2, 90);
+  const inner  = w - 2;
+  const lines  = content.split('\n');
+  const top    = title
+    ? color(`┌─ ${title} ${'─'.repeat(Math.max(0, inner - title.length - 3))}┐`)
+    : color(`┌${'─'.repeat(inner)}┐`);
+  const bot    = color(`└${'─'.repeat(inner)}┘`);
+  const mid    = lines.map(l => {
+    const stripped = stripAnsi(l);
+    const pad      = Math.max(0, inner - 2 - stripped.length);
+    return color('│') + ' ' + l + ' '.repeat(pad) + ' ' + color('│');
+  }).join('\n');
+  return `${top}\n${mid}\n${bot}`;
 }
 
-export function num(n, d = 2) {
-  if (n == null || isNaN(n)) return 'N/A';
-  const abs = Math.abs(n);
-  if (abs >= 1e9) return `${(n / 1e9).toFixed(d)}B`;
-  if (abs >= 1e6) return `${(n / 1e6).toFixed(d)}M`;
-  if (abs >= 1e3) return `${(n / 1e3).toFixed(d)}K`;
-  return n.toFixed(d);
+function hr(char = '─', color = c.dim) {
+  return color(char.repeat(Math.min(termWidth() - 2, 90)));
 }
 
-export function trunc(s, len) {
-  if (!s) return '';
-  return s.length > len ? s.slice(0, len - 1) + '…' : s;
+// ─── Banner ──────────────────────────────────────────────────────────────────
+
+function printBanner() {
+  const w = Math.min(termWidth(), 92);
+  const art = [
+    c.bold(c.cyan('  ██████╗ ██╗   ██╗ ██████╗ ██████╗ ██╗      █████╗ ██╗   ██╗')),
+    c.bold(c.cyan('  ██╔══██╗██║   ██║██╔════╝ ██╔══██╗██║     ██╔══██╗╚██╗ ██╔╝')),
+    c.bold(c.cyan('  ██████╔╝██║   ██║██║  ███╗██████╔╝██║     ███████║ ╚████╔╝ ')),
+    c.bold(c.cyan('  ██╔══██╗██║   ██║██║   ██║██╔═══╝ ██║     ██╔══██║  ╚██╔╝  ')),
+    c.bold(c.cyan('  ██║  ██║╚██████╔╝╚██████╔╝██║     ███████╗██║  ██║   ██║   ')),
+    c.bold(c.cyan('  ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═╝   ╚═╝  ')),
+    c.dim(c.cyan('  CLI  ') + c.dim('─') + c.dim(' terminal client for rugplay.com') + c.dim(' ─') + c.dim(' enhanced by Glaringly')),
+  ];
+  console.log('');
+  art.forEach(l => console.log(l));
+  console.log('');
 }
 
-export function pad(str, len, right = false) {
-  const s = String(str ?? '');
-  const visual = s.replace(/\x1b\[[0-9;]*m/g, '').length;
-  const diff = Math.max(0, len - visual);
-  return right ? ' '.repeat(diff) + s : s + ' '.repeat(diff);
+// ─── Table ───────────────────────────────────────────────────────────────────
+
+function table(rows, cols) {
+  // cols: [{ key, label, width, align, format }]
+  const w      = Math.min(termWidth() - 2, 110);
+  const sep    = c.dim('│');
+  const line   = c.dim('─');
+
+  // Header
+  let header = sep + ' ';
+  let divider = c.dim('├');
+  cols.forEach((col, i) => {
+    const lbl   = col.label.padEnd(col.width);
+    header     += c.bold(c.white(lbl)) + ' ' + sep + ' ';
+    divider    += line.repeat(col.width + 2) + (i < cols.length - 1 ? c.dim('┼') : c.dim('┤'));
+  });
+
+  const topBar = c.dim('┌') + cols.map(col => line.repeat(col.width + 2)).join(c.dim('┬')) + c.dim('┐');
+  const botBar = c.dim('└') + cols.map(col => line.repeat(col.width + 2)).join(c.dim('┴')) + c.dim('┘');
+
+  const tableRows = rows.map(row => {
+    let out = sep + ' ';
+    cols.forEach(col => {
+      const raw   = col.format ? col.format(row[col.key], row) : (row[col.key] ?? '');
+      const str   = String(raw);
+      const len   = stripAnsi(str).length;
+      const pad   = Math.max(0, col.width - len);
+      const cell  = col.align === 'right' ? ' '.repeat(pad) + str : str + ' '.repeat(pad);
+      out        += cell + ' ' + sep + ' ';
+    });
+    return out;
+  });
+
+  return [topBar, header, divider, ...tableRows, botBar].join('\n');
 }
 
-export function header(title) {
-  const bar = '─'.repeat(62);
-  console.log(`\n${c.cyan(bar)}`);
-  console.log(`${c.bold(c.cyan('  ' + title))}`);
-  console.log(`${c.cyan(bar)}`);
+// ─── Price formatting ─────────────────────────────────────────────────────────
+
+function fmtPrice(n) {
+  if (n === null || n === undefined) return c.dim('N/A');
+  const num = parseFloat(n);
+  if (num >= 1e9)  return c.yellow(`$${(num / 1e9).toFixed(2)}B`);
+  if (num >= 1e6)  return c.yellow(`$${(num / 1e6).toFixed(2)}M`);
+  if (num >= 1000) return c.yellow(`$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  if (num >= 1)    return c.yellow(`$${num.toFixed(4)}`);
+  if (num >= 0.01) return c.yellow(`$${num.toFixed(6)}`);
+  return c.yellow(`$${num.toExponential(4)}`);
 }
 
-export function colHead(cols) {
-  const cells = cols.map(([label, w, r]) => pad(c.bold(c.yellow(label)), w, r));
-  console.log(cells.join('  '));
-  const totalW = cols.reduce((a, [, w]) => a + w + 2, -2);
-  console.log(c.dim('─'.repeat(totalW)));
+function fmtChange(pct) {
+  if (pct === null || pct === undefined) return c.dim('N/A');
+  const n = parseFloat(pct);
+  const s = (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+  if (n >  10) return c.bgreen(s);
+  if (n >   0) return c.green(s);
+  if (n < -10) return c.bred(s);
+  if (n <   0) return c.red(s);
+  return c.dim(s);
 }
 
-export function err(msg) {
-  console.error(c.red(`✗  ${msg}`));
+function fmtMcap(n) {
+  if (!n) return c.dim('—');
+  const num = parseFloat(n);
+  if (num >= 1e9) return c.magenta(`$${(num / 1e9).toFixed(2)}B`);
+  if (num >= 1e6) return c.magenta(`$${(num / 1e6).toFixed(2)}M`);
+  if (num >= 1e3) return c.magenta(`$${(num / 1e3).toFixed(1)}K`);
+  return c.magenta(`$${num.toFixed(0)}`);
 }
 
-export function info(msg) {
-  console.log(c.dim(`   ${msg}`));
+function fmtVol(n) {
+  if (!n) return c.dim('—');
+  const num = parseFloat(n);
+  if (num >= 1e6) return c.blue(`$${(num / 1e6).toFixed(2)}M`);
+  if (num >= 1e3) return c.blue(`$${(num / 1e3).toFixed(1)}K`);
+  return c.blue(`$${num.toFixed(0)}`);
 }
 
-export function tip(msg) {
-  console.log(`\n${c.yellow('?')}  ${c.dim(msg)}\n`);
+function fmtTime(ts) {
+  const d = new Date(ts);
+  return c.dim(d.toLocaleTimeString('en-US', { hour12: false }));
 }
 
-export function timeAgo(dateStr) {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1)  return 'just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+function fmtDate(ts) {
+  const d = new Date(ts);
+  return c.dim(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
 }
 
-export function probBar(yesPct, width = 20) {
-  const fill = Math.round((Math.min(100, Math.max(0, yesPct)) / 100) * width);
-  return `${G}${'█'.repeat(fill)}${RED}${'█'.repeat(width - fill)}${R}`;
+// ─── Sparkline ───────────────────────────────────────────────────────────────
+
+const SPARK = ['▁','▂','▃','▄','▅','▆','▇','█'];
+
+function sparkline(values, width = 20) {
+  if (!values || values.length === 0) return c.dim('─'.repeat(width));
+  const slice = values.slice(-width);
+  const min   = Math.min(...slice);
+  const max   = Math.max(...slice);
+  const range = max - min || 1;
+  const chars = slice.map(v => SPARK[Math.round(((v - min) / range) * 7)]);
+  const color = slice[slice.length - 1] >= slice[0] ? c.green : c.red;
+  return color(chars.join(''));
 }
 
-export function miniChart(candles, height = 7, width = 40) {
-  const slice = candles.slice(-width);
-  const prices = slice.flatMap((c) => [c.high, c.low]);
-  const lo = Math.min(...prices);
-  const hi = Math.max(...prices);
-  const range = hi - lo || 1;
-  const grid = Array.from({ length: height }, () => new Array(slice.length).fill(' '));
+// ─── ASCII Candlestick chart ──────────────────────────────────────────────────
 
-  slice.forEach((candle, x) => {
+function candlestickChart(candles, width, height = 16) {
+  // candles: [{ open, high, low, close, time }]
+  if (!candles || candles.length === 0) return c.dim('  No data available');
+
+  const W  = Math.min(width || termWidth() - 10, 80);
+  const H  = height;
+  const N  = Math.min(candles.length, Math.floor(W / 2));
+  const cs = candles.slice(-N);
+
+  const allH = cs.map(c => c.high);
+  const allL = cs.map(c => c.low);
+  const maxP = Math.max(...allH);
+  const minP = Math.min(...allL);
+  const range = maxP - minP || 1;
+
+  const toRow = (price) => H - 1 - Math.round(((price - minP) / range) * (H - 1));
+
+  // Build grid
+  const grid = Array.from({ length: H }, () => Array(W).fill(' '));
+
+  cs.forEach((candle, i) => {
+    const x    = i * 2;
     const bull = candle.close >= candle.open;
-    const col = bull ? G : RED;
-    const toY = (v) => height - 1 - Math.round(((v - lo) / range) * (height - 1));
+    const col  = bull ? c.green : c.red;
 
-    const bodyTop = toY(Math.max(candle.open, candle.close));
-    const bodyBot = toY(Math.min(candle.open, candle.close));
-    const wickTop = toY(candle.high);
-    const wickBot = toY(candle.low);
+    const rHigh  = toRow(candle.high);
+    const rLow   = toRow(candle.low);
+    const rOpen  = toRow(candle.open);
+    const rClose = toRow(candle.close);
 
-    for (let y = 0; y < height; y++) {
-      if (y >= bodyTop && y <= bodyBot) grid[y][x] = `${col}█${R}`;
-      else if (y >= wickTop && y <= wickBot) grid[y][x] = `${col}│${R}`;
+    const bodyTop = Math.min(rOpen, rClose);
+    const bodyBot = Math.max(rOpen, rClose);
+
+    // Wick
+    for (let r = rHigh; r <= rLow; r++) {
+      if (r >= 0 && r < H) {
+        grid[r][x] = col('│');
+      }
+    }
+    // Body
+    for (let r = bodyTop; r <= bodyBot; r++) {
+      if (r >= 0 && r < H) {
+        grid[r][x] = bull ? c.bgGreen(' ') : c.bgRed(' ');
+      }
+    }
+    if (bodyTop === bodyBot) {
+      grid[bodyTop][x] = bull ? c.bgreen('─') : c.bred('─');
     }
   });
 
-  console.log(`  ${c.dim($$(hi))}`);
-  grid.forEach((row) => console.log('  ' + row.join('')));
-  console.log(`  ${c.dim($$(lo))}`);
+  // Y-axis labels
+  const labelWidth = 12;
+  const rows = grid.map((row, i) => {
+    const priceFrac = 1 - i / (H - 1);
+    const priceVal  = minP + priceFrac * range;
+    const label     = fmtPrice(priceVal).padStart(labelWidth);
+    return label + ' ' + c.dim('│') + ' ' + row.join('');
+  });
+
+  // X-axis
+  const xAxis = ' '.repeat(labelWidth + 3) + c.dim('└' + '─'.repeat(N * 2));
+
+  // Time labels
+  const step    = Math.ceil(N / 5);
+  let timeLine  = ' '.repeat(labelWidth + 4);
+  cs.forEach((candle, i) => {
+    if (i % step === 0) {
+      const label = fmtDate(candle.time * 1000);
+      timeLine   += c.dim(stripAnsi(label).slice(0, step * 2 - 1).padEnd(step * 2));
+    }
+  });
+
+  return rows.join('\n') + '\n' + xAxis + '\n' + timeLine;
 }
 
-export function parseFlags(args) {
-  const flags = {};
-  const pos = [];
-  for (const a of args) {
-    const m = a.match(/^--?([^=]+)(?:=(.*))?$/);
-    if (m) flags[m[1]] = m[2] ?? true;
-    else pos.push(a);
-  }
-  return { flags, pos };
+// ─── Progress bar ─────────────────────────────────────────────────────────────
+
+function progressBar(pct, width = 20, color = c.cyan) {
+  const filled = Math.round((pct / 100) * width);
+  const empty  = width - filled;
+  return color('█'.repeat(filled)) + c.dim('░'.repeat(empty)) + c.dim(` ${pct.toFixed(1)}%`);
 }
+
+// ─── Strip ANSI ──────────────────────────────────────────────────────────────
+
+function stripAnsi(str) {
+  return String(str).replace(/\x1b\[[0-9;]*m/g, '');
+}
+
+// ─── Spinner ─────────────────────────────────────────────────────────────────
+
+function spinner(label = 'Loading') {
+  const frames = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+  let i = 0;
+  const iv = setInterval(() => {
+    process.stdout.write(`\r  ${c.cyan(frames[i++ % frames.length])} ${c.dim(label)}...`);
+  }, 80);
+  return {
+    stop: (msg = '') => {
+      clearInterval(iv);
+      process.stdout.write(`\r${' '.repeat(label.length + 10)}\r`);
+      if (msg) console.log(msg);
+    }
+  };
+}
+
+module.exports = {
+  c, box, hr, table, printBanner,
+  fmtPrice, fmtChange, fmtMcap, fmtVol, fmtTime, fmtDate,
+  sparkline, candlestickChart, progressBar, stripAnsi, spinner,
+  termWidth,
+};
