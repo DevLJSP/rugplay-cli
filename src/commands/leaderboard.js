@@ -1,116 +1,78 @@
-import { api } from '../api.js';
-import { c, $$, pad, header, colHead, tip } from '../display.js';
+// src/commands/leaderboard.js — leaderboard categories
+// enhanced by Glaringly
 
-export async function cmdLeaderboard(args) {
-  const mode = args[0] ?? 'rugpullers';
-  const data = await api.leaderboard();
+'use strict';
 
-  const modes = {
-    rugpullers:      showRugpullers,
-    losers:          showLosers,
-    cash:            showCash,
-    rich:            showRich,
-  };
+const api = require('../api');
+const { c, box, table, fmtPrice, spinner } = require('../display');
 
-  const fn = modes[mode];
-  if (!fn) {
-    console.log(c.red(`Unknown mode "${mode}". Choose: rugpullers | losers | cash | rich`));
+const TYPES = ['rugpullers', 'losers', 'cash', 'rich'];
+
+async function leaderboard(args) {
+  const type = (args[0] || 'rich').toLowerCase();
+
+  if (!TYPES.includes(type)) {
+    console.log(c.red(`  ✗ Unknown leaderboard type: "${type}"`));
+    console.log(`  ${c.dim('Valid types:')} ${TYPES.map(t => c.cyan(t)).join('  ')}`);
     return;
   }
 
-  fn(data);
-  tip('leaderboard <mode>   —   rugpullers | losers | cash | rich');
-}
-
-function medal(i) {
-  if (i === 0) return '🥇';
-  if (i === 1) return '🥈';
-  if (i === 2) return '🥉';
-  return c.dim(String(i + 1));
-}
-
-function showRugpullers(data) {
-  header('Top Rugpullers (24h net profit from sells)');
-  colHead([
-    ['',         4],
-    ['Username', 22],
-    ['Extracted', 14, true],
-    ['Sold',      14, true],
-    ['Bought',    14, true],
-  ]);
-  for (const [i, u] of data.topRugpullers.entries()) {
-    console.log([
-      pad(medal(i),             4),
-      pad(c.bold(u.username),  22),
-      pad(c.green($$(u.totalExtracted)), 14, true),
-      pad($$(Number(u.totalSold)),   14, true),
-      pad($$(Number(u.totalBought)), 14, true),
-    ].join('  '));
+  const spin = spinner(`Fetching ${type} leaderboard`);
+  let data;
+  try {
+    data = await api.getLeaderboard(type);
+  } finally {
+    spin.stop();
   }
-  console.log();
+
+  const list = data?.users || data?.data || data || [];
+  if (!list.length) {
+    console.log(c.yellow('  No data returned.'));
+    return;
+  }
+
+  const medals = ['🥇','🥈','🥉'];
+
+  const valueKey = {
+    rugpullers: { key: 'profit24h',    label: '24h Profit' },
+    losers:     { key: 'loss24h',      label: '24h Loss' },
+    cash:       { key: 'cashBalance',  label: 'BUSS Balance' },
+    rich:       { key: 'totalValue',   label: 'Portfolio Value' },
+  }[type];
+
+  const titles = {
+    rugpullers: '💰 Biggest Rugpullers (24h)',
+    losers:     '💸 Biggest Losers (24h)',
+    cash:       '💵 Most Cash (BUSS)',
+    rich:       '👑 Richest Portfolios',
+  };
+
+  const cols = [
+    { key: '_rank',  label: '#',      width: 5,  align: 'right',
+      format: (v, r) => {
+        const m = medals[r._rank - 1];
+        return m ? m + ' ' : c.dim(String(r._rank).padStart(3) + ' ');
+      }
+    },
+    { key: 'userId',   label: 'User',   width: 25,
+      format: (v) => c.cyan(String(v || '—').slice(0, 25)) },
+    { key: 'username', label: 'Username', width: 18,
+      format: (v) => v ? c.white(String(v).slice(0, 18)) : c.dim('—') },
+    { key: valueKey.key, label: valueKey.label, width: 16, align: 'right',
+      format: (v) => {
+        if (!v) return c.dim('—');
+        const n = parseFloat(v);
+        if (type === 'losers') return c.red(fmtPrice(Math.abs(n)));
+        return fmtPrice(n);
+      }
+    },
+  ];
+
+  const rows = list.slice(0, 50).map((u, i) => ({ ...u, _rank: i + 1 }));
+
+  console.log('');
+  console.log(box(table(rows, cols), titles[type]));
+  console.log('');
 }
 
-function showLosers(data) {
-  header('Biggest Losers (24h)');
-  colHead([
-    ['',         4],
-    ['Username', 22],
-    ['Loss',     14, true],
-    ['Spent',    14, true],
-    ['Received', 14, true],
-    ['Cur Val',  12, true],
-  ]);
-  for (const [i, u] of data.biggestLosers.entries()) {
-    console.log([
-      pad(medal(i),                      4),
-      pad(c.bold(u.username),           22),
-      pad(c.red($$(u.totalLoss)),       14, true),
-      pad($$(u.moneySpent),             14, true),
-      pad($$(u.moneyReceived),          14, true),
-      pad($$(u.currentValue),           12, true),
-    ].join('  '));
-  }
-  console.log();
-}
-
-function showCash(data) {
-  header('Cash Kings (highest BUSS balance)');
-  colHead([
-    ['',         4],
-    ['Username', 22],
-    ['Balance',  14, true],
-    ['Coin Val', 14, true],
-    ['Total',    14, true],
-  ]);
-  for (const [i, u] of data.cashKings.entries()) {
-    console.log([
-      pad(medal(i),                             4),
-      pad(c.bold(u.username),                  22),
-      pad(c.green($$(u.baseCurrencyBalance)),  14, true),
-      pad($$(u.coinValue),                     14, true),
-      pad(c.bold($$(u.totalPortfolioValue)),   14, true),
-    ].join('  '));
-  }
-  console.log();
-}
-
-function showRich(data) {
-  header('Paper Millionaires (highest total portfolio)');
-  colHead([
-    ['',         4],
-    ['Username', 22],
-    ['Total',    14, true],
-    ['Cash',     14, true],
-    ['Coins',    14, true],
-  ]);
-  for (const [i, u] of data.paperMillionaires.entries()) {
-    console.log([
-      pad(medal(i),                             4),
-      pad(c.bold(u.username),                  22),
-      pad(c.bold($$(u.totalPortfolioValue)),   14, true),
-      pad($$(u.baseCurrencyBalance),           14, true),
-      pad($$(u.coinValue),                     14, true),
-    ].join('  '));
-  }
-  console.log();
-}
+module.exports = { leaderboard };
